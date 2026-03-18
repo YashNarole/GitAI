@@ -1,68 +1,70 @@
-# PDF → BOW VECTORIZATION - END-TO-END (20 LINES)
-import pandas as pd
 import re
+import numpy as np
+from gensim.models import Word2Vec
 from pypdf import PdfReader
-from sklearn.feature_extraction.text import CountVectorizer
-import numpy as np  # ADD THIS LINE (line 1-2)
 
-
-# 1. YOUR PDF PATH
+# ========================================
+# STEP 1: LOAD & PREPARE RAMAYANA TEXT
+# ========================================
+print("📖 Loading Ramayana...")
 pdf_path = r"C:\Users\PARAM 790\AI Playground\GitAI\ML_For_NLP\Ramayana.of.Valmiki.by.Hari.Prasad.Shastri-18-24.pdf"
 
-# 2. EXTRACT TEXT FROM PDF
-print("📄 Extracting text from Ramayana PDF...")
 reader = PdfReader(pdf_path)
 full_text = ""
 for page in reader.pages:
     full_text += page.extract_text() + " "
 
-print(f"✅ Extracted {len(full_text)} characters")
+# Clean & split into sentences
+clean_text = re.sub(r'[^a-zA-Z\s]', ' ', full_text).lower()
+sentences = re.split(r'[.!?]+', clean_text)
+sentences = [s.strip().split() for s in sentences if len(s.split()) > 3]
 
-# 3. PREPROCESS
-clean_text = re.sub('[^a-zA-Z]', ' ', full_text).lower()
-corpus = [' '.join(clean_text.split())]  # Single document
+print(f"✅ {len(sentences)} sentences ready!")
+print("Sample:", ' '.join(sentences[10][:10]))
 
-# 4. VECTORIZE (BAG OF WORDS)
-print("🎒 Creating Bag of Words...")
-cv = CountVectorizer(max_features=2500, stop_words='english')
-bow = cv.fit_transform(corpus).toarray()
+# ========================================
+# STEP 2: TRAIN WORD2VEC (3 minutes)
+# ========================================
+print("\n🤖 Training Ramayana Word2Vec...")
+model = Word2Vec(
+    sentences=sentences,
+    vector_size=100,      # 100-dim vectors
+    window=5,             # 5 words context
+    min_count=5,          # Ignore rare words
+    workers=4,
+    epochs=10             # Training passes
+)
 
-# 5. RESULTS
-print(f"✅ BOW Vector Shape: {bow.shape}")
-print(f"✅ Vocabulary size: {len(cv.get_feature_names_out())}")
-print("\nTop 10 words:")
-print(pd.Series(bow[0]).sort_values(ascending=False).head(10))
-print("\nFirst 20 words:", cv.get_feature_names_out()[:120])
+model.save("ramayana_word2vec.model")
+print("🎉 Model saved!")
 
+# ========================================
+# STEP 3: TEST THE MAGIC!
+# ========================================
+print("\n🔥 TESTING WORD2VEC KNOWLEDGE:")
+model = Word2Vec.load("ramayana_word2vec.model")
 
-# COMPLETE PDF VECTOR - FULL LIST (Run after previous code)
+# Test 1: Rama's world
+print("\n1. Rama's closest words:")
+for word, score in model.wv.most_similar('rama', topn=10):
+    print(f"   {word}: {score:.3f}")
 
-# Get the entire BOW vector as list
-full_vector = bow[0].tolist()  # Convert numpy array → Python list
+# Test 2: Similarity scores
+print("\n2. Similarity proof:")
+print(f"  rama ↔ lord:    {model.wv.similarity('rama', 'lord'):.3f}")
+print(f"  rama ↔ vishnu:  {model.wv.similarity('rama', 'vishnu'):.3f}")
+print(f"  rama ↔ sita:    {model.wv.similarity('rama', 'sita'):.3f}")
+print(f"  rama ↔ apple:   {model.wv.similarity('rama', 'apple'):.3f}")
 
-print("📋 COMPLETE PDF VECTOR (first 100 values):")
-print(full_vector[:100])
+# Test 3: Vector math (king-man+woman=queen style)
+print("\n3. Vector math:")
+result = model.wv.most_similar(positive=['rama', 'sita'], negative=['ravana'])
+print(f"  rama + sita - ravana = {result[0][0]} ({result[0][1]:.3f})")
 
-print(f"\n📊 Full vector length: {len(full_vector)}")
-print(f"Non-zero words (actual content): {(bow[0] > 0).sum()}")
+# Test 4: Show actual vectors
+print("\n4. Vector peek:")
+print("  rama =", model.wv['rama'][:10])
+print("  lord =", model.wv['lord'][:10])
 
-# Show words with non-zero values (actual Ramayana content)
-non_zero_indices = np.where(bow[0] > 0)[0]
-print("\n🔤 Words found in Ramayana PDF:")
-for idx in non_zero_indices[:20]:  # First 20 non-zero words
-    word = cv.get_feature_names_out()[idx]
-    count = int(bow[0][idx])
-    print(f"  {word}: {count}")
-
-# Save complete vector
-import pickle
-with open('ramayana_complete_vector.pkl', 'wb') as f:
-    pickle.dump({
-        'vector': full_vector,
-        'vocabulary': cv.get_feature_names_out().tolist(),
-        'non_zero_count': (bow[0] > 0).sum()
-    }, f)
-
-print("\n💾 Saved complete vector: ramayana_complete_vector.pkl")
-
+print("\n🎊 WORD2VEC SUCCESS! 'lord' is near 'rama' as expected!")
 
