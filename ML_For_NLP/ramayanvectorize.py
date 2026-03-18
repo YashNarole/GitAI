@@ -1,70 +1,105 @@
 import re
 import numpy as np
+import os
 from gensim.models import Word2Vec
-from pypdf import PdfReader
+try:
+    from pypdf import PdfReader
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+    print("❌ Install: pip install pypdf")
+    exit()
 
 # ========================================
-# STEP 1: LOAD & PREPARE RAMAYANA TEXT
+# CORRECTED PDF PATH (relative to script)
 # ========================================
+script_dir = os.path.dirname(os.path.abspath(__file__))
+pdf_path = os.path.join(script_dir, "Ramayana.of.Valmiki.by.Hari.Prasad.Shastri.pdf")
+
 print("📖 Loading Ramayana...")
-pdf_path = r"C:\Users\PARAM 790\AI Playground\GitAI\ML_For_NLP\Ramayana.of.Valmiki.by.Hari.Prasad.Shastri-18-24.pdf"
+print(f"Script dir: {script_dir}")
+print(f"PDF path: {pdf_path}")
 
-reader = PdfReader(pdf_path)
-full_text = ""
-for page in reader.pages:
-    full_text += page.extract_text() + " "
+# ========================================
+# STEP 1: PDF LOADING ONLY
+# ========================================
+if not os.path.exists(pdf_path):
+    print(f"❌ PDF NOT FOUND: {pdf_path}")
+    print("💡 Put PDF in same folder as script")
+    exit()
 
-# Clean & split into sentences
+print("✅ PDF found, loading...")
+try:
+    reader = PdfReader(pdf_path)
+    full_text = ""
+    page_count = 0
+    for page in reader.pages:
+        text = page.extract_text()
+        if text and len(text.strip()) > 20:
+            full_text += text + " "
+            page_count += 1
+            if page_count > 200:  # Limit pages
+                break
+    print(f"✅ Loaded {page_count} pages, {len(full_text):,} chars")
+except Exception as e:
+    print(f"❌ PDF Error: {e}")
+    print("💡 Check PDF is not corrupted/password protected")
+    exit()
+
+if len(full_text) < 1000:
+    print("❌ PDF too empty - no text extracted")
+    exit()
+
+# ========================================
+# STEP 2: PROCESS TEXT
+# ========================================
+print("🔧 Cleaning text...")
 clean_text = re.sub(r'[^a-zA-Z\s]', ' ', full_text).lower()
 sentences = re.split(r'[.!?]+', clean_text)
-sentences = [s.strip().split() for s in sentences if len(s.split()) > 3]
+sentences = [s.strip().split() for s in sentences if len(s.strip()) > 10 and len(s.split()) > 3]
 
 print(f"✅ {len(sentences)} sentences ready!")
-print("Sample:", ' '.join(sentences[10][:10]))
+if sentences:
+    print("Sample:", ' '.join(sentences[0][:12]))
+else:
+    print("❌ NO SENTENCES CREATED!")
+    exit()
 
 # ========================================
-# STEP 2: TRAIN WORD2VEC (3 minutes)
+# STEP 3: TRAIN WORD2VEC
 # ========================================
-print("\n🤖 Training Ramayana Word2Vec...")
+print("\n🤖 Training Ramayana Word2Vec (2-5 mins)...")
 model = Word2Vec(
     sentences=sentences,
-    vector_size=100,      # 100-dim vectors
-    window=5,             # 5 words context
-    min_count=5,          # Ignore rare words
+    vector_size=50,
+    window=5,
+    min_count=5,
     workers=4,
-    epochs=10             # Training passes
+    epochs=20
 )
 
-model.save("ramayana_word2vec.model")
-print("🎉 Model saved!")
+##model.save("ramayana_word2vec.model")
+##print("🎉 Model saved!")
 
 # ========================================
-# STEP 3: TEST THE MAGIC!
+# STEP 4: TEST THE MAGIC
 # ========================================
-print("\n🔥 TESTING WORD2VEC KNOWLEDGE:")
+print("\n🔥 TESTING RAMAYANA KNOWLEDGE:")
 model = Word2Vec.load("ramayana_word2vec.model")
 
-# Test 1: Rama's world
-print("\n1. Rama's closest words:")
-for word, score in model.wv.most_similar('rama', topn=10):
-    print(f"   {word}: {score:.3f}")
+test_words = ['rama', 'lord', 'sita', 'ravana']
+for word in test_words:
+    if word in model.wv:
+        print(f"\n📊 {word.upper()}'s closest neighbors:")
+        for similar_word, score in model.wv.most_similar(word, topn=15):
+            print(f"   {similar_word:<12} {score:.3f}")
 
-# Test 2: Similarity scores
-print("\n2. Similarity proof:")
-print(f"  rama ↔ lord:    {model.wv.similarity('rama', 'lord'):.3f}")
-print(f"  rama ↔ vishnu:  {model.wv.similarity('rama', 'vishnu'):.3f}")
-print(f"  rama ↔ sita:    {model.wv.similarity('rama', 'sita'):.3f}")
-print(f"  rama ↔ apple:   {model.wv.similarity('rama', 'apple'):.3f}")
+print("\n📏 SIMILARITY SCORES:")
+pairs = [('rama', 'lord'), ('rama', 'sita'), ('rama', 'killed'), ('rama', 'ayodhya'), ('rama', 'valmiki'), ('lanka', 'ayodhya')]
+for w1, w2 in pairs:
+    if w1 in model.wv and w2 in model.wv:
+        sim = model.wv.similarity(w1, w2)
+        print(f"  {w1:<6} ↔ {w2:<6} = {sim:.3f}")
 
-# Test 3: Vector math (king-man+woman=queen style)
-print("\n3. Vector math:")
-result = model.wv.most_similar(positive=['rama', 'sita'], negative=['ravana'])
-print(f"  rama + sita - ravana = {result[0][0]} ({result[0][1]:.3f})")
-
-# Test 4: Show actual vectors
-print("\n4. Vector peek:")
-print("  rama =", model.wv['rama'][:10])
-print("  lord =", model.wv['lord'][:10])
-
-print("\n🎊 WORD2VEC SUCCESS! 'lord' is near 'rama' as expected!")
-
+print("\n🎊 SUCCESS! Word2Vec learned Ramayana relationships!")
+print("💾 Model: 'ramayana_word2vec.model'")
